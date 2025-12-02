@@ -185,7 +185,7 @@ export default function OperationSummerStats() {
           >
             <option value="all">Todas</option>
             {Object.entries(SUMMER_MISSION_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
+              <option key={key} value={key}>{label as string}</option>
             ))}
           </Select>
 
@@ -382,7 +382,7 @@ export default function OperationSummerStats() {
                     {Object.entries(SUMMER_MISSION_LABELS).map(([key, label]) => (
                        <div key={key} className="flex items-center gap-2">
                           <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: MISSION_COLORS[key] }}></div>
-                          <span className="text-slate-600">{label}</span>
+                          <span className="text-slate-600">{label as string}</span>
                        </div>
                     ))}
                  </div>

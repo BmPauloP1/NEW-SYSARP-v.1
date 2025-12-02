@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { operationSummerService } from '../services/operationSummerService';
 import { base44 } from '../services/base44Client';
@@ -32,8 +34,10 @@ export default function OperationSummerFlights() {
         setPilots(p);
         setDrones(d);
         setCurrentUser(me);
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        if (e.message !== "Não autenticado" && !e.message?.includes("Failed to fetch")) {
+           console.error("Erro ao carregar dados", e);
+        }
     } finally {
         setLoading(false);
     }
@@ -71,8 +75,15 @@ export default function OperationSummerFlights() {
         await operationSummerService.delete(Array.from(selectedIds), currentUser.id);
         setSelectedIds(new Set());
         await loadData();
-      } catch (e) {
-        alert("Erro ao excluir registros.");
+      } catch (e: any) {
+        console.error("Delete failed:", e);
+        // Improved error message display to help user debug
+        const msg = e.message || 'Erro desconhecido.';
+        if (msg.includes("404")) {
+           alert("Erro 404: Tabela não encontrada ou endpoint inacessível. Verifique se a tabela 'op_summer_flights' existe no Supabase.");
+        } else {
+           alert(`Falha na exclusão: ${msg}`);
+        }
       } finally {
         setLoading(false);
       }

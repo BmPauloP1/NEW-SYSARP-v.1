@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from "react";
 import { base44 } from "../services/base44Client";
 import { Drone, Pilot, Operation } from "../types";

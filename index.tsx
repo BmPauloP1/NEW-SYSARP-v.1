@@ -1,4 +1,3 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -11,10 +10,7 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   /* 
-    React.StrictMode foi removido intencionalmente.
-    O Leaflet (biblioteca de mapas) possui problemas conhecidos com o StrictMode do React 18,
-    causando erros como "Cannot read properties of undefined (reading '_leaflet_pos')"
-    devido ao ciclo duplo de montagem/desmontagem em desenvolvimento.
+    React.StrictMode removed to prevent Leaflet mount/unmount issues in dev
   */
   <App />
 );

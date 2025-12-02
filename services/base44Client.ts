@@ -1,5 +1,4 @@
 
-
 import { supabase, isConfigured } from './supabase';
 import { Drone, Operation, Pilot, Maintenance, FlightLog, ConflictNotification, DroneChecklist } from '../types';
 
@@ -151,8 +150,12 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
         const { data, error } = await query;
         if (error) throw error;
         return data as unknown as T[];
-      } catch (e) {
-        console.warn(`Supabase list error for ${entityName}:`, e);
+      } catch (e: any) {
+        if (e.message && e.message.includes("Failed to fetch")) {
+           console.debug(`Offline/Network Error listing ${entityName} (using fallback)`);
+        } else {
+           console.warn(`Supabase list error for ${entityName}:`, e);
+        }
         return getLocal<T>(storageKey);
       }
     },
@@ -182,8 +185,12 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
         const { data, error } = await supabase.from(tableName).select('*');
         if (error) throw error;
         return (data as unknown as T[]).filter(predicate);
-      } catch (e) {
-        console.warn(`Supabase filter error for ${entityName}:`, e);
+      } catch (e: any) {
+        if (e.message && e.message.includes("Failed to fetch")) {
+           console.debug(`Offline/Network Error filtering ${entityName} (using fallback)`);
+        } else {
+           console.warn(`Supabase filter error for ${entityName}:`, e);
+        }
         const items = getLocal<T>(storageKey);
         if (typeof predicate === 'function') {
           return items.filter(predicate);

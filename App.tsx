@@ -14,7 +14,7 @@ import Login from './pages/Login';
 import { supabase } from './services/supabase';
 import { base44 } from './services/base44Client';
 
-// Módulo Operação Verão
+// Módulo Operação Verão - Ensure relative paths
 import OperationSummerFlights from './pages/OperationSummerFlights';
 import OperationSummerStats from './pages/OperationSummerStats';
 import OperationSummerReport from './pages/OperationSummerReport';

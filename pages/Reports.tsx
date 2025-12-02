@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { base44 } from "../services/base44Client";
-import { Operation, Pilot, Drone, MISSION_LABELS, MISSION_HIERARCHY, SYSARP_LOGO } from "../types";
+import { Operation, Pilot, Drone, MISSION_LABELS, MISSION_HIERARCHY, SYSARP_LOGO, AroAssessment, MissionType } from "../types";
 import { Card, Input, Select, Button, Badge } from "../components/ui_components";
-import { Filter, FileText, Calendar, Download, CheckSquare, Search, Map as MapIcon, BarChart2, PieChart as PieIcon, Layers, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Filter, FileText, Calendar, Download, CheckSquare, Search, Map as MapIcon, BarChart2, PieChart as PieIcon, Layers, ShieldCheck, AlertTriangle, Navigation } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import jsPDF from 'jspdf';
@@ -11,7 +11,7 @@ import autoTable from 'jspdf-autotable';
 import L from "leaflet";
 
 // Extended Operation type to include joined data for filtering
-interface ExtendedOperation extends Operation {
+type ExtendedOperation = Operation & {
   pilot?: Pilot;
   drone?: Drone;
 }
@@ -68,11 +68,13 @@ const getImageData = (url: string): Promise<string> => {
 };
 
 // Componente auxiliar para corrigir renderização do mapa (Tiles Cinzas)
-const MapAdjuster = () => {
+const MapController = () => {
   const map = useMap();
   useEffect(() => {
     const timer = setTimeout(() => {
-      map.invalidateSize();
+      if (map && map.getContainer()) {
+        map.invalidateSize();
+      }
     }, 250);
     return () => clearTimeout(timer);
   }, [map]);
@@ -246,6 +248,7 @@ export default function Reports() {
             ['Aeronave', `${op.drone?.prefix || 'N/A'} - ${op.drone?.model || ''}`],
             ['Protocolo SARPAS', op.sarpas_protocol || 'N/A'],
             ['Status A.R.O.', op.aro ? 'Confeccionado' : 'Pendente'],
+            ['Plano de Voo', op.flight_plan_data ? 'Realizado' : 'Não Realizado'],
           ],
           headStyles: { fillColor: [60, 60, 60] },
           theme: 'grid',
@@ -270,6 +273,95 @@ export default function Reports() {
       alert("Erro ao gerar PDF.");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDownloadFlightPlan = async (op: ExtendedOperation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!op.flight_plan_data) return;
+
+    try {
+      const formData = JSON.parse(op.flight_plan_data);
+      const doc = new jsPDF();
+      
+      // Pilot and Drone info from joined data if not in formData (fallback)
+      const pilotName = op.pilot?.full_name || formData.pilot_id;
+      const droneName = op.drone?.prefix || formData.drone_id;
+
+      // Header
+      doc.setFillColor(200, 200, 200);
+      doc.rect(0, 0, 210, 20, 'F');
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("PLANO DE VOO / NOTIFICAÇÃO", 105, 12, { align: "center" });
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      
+      let y = 30;
+      const lineHeight = 7;
+
+      // Section 1: Identificação
+      doc.setFont("helvetica", "bold");
+      doc.text("1. IDENTIFICAÇÃO", 14, y);
+      y += lineHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Identificação da Aeronave: ${formData.callsign || droneName}`, 14, y);
+      doc.text(`Regras de Voo: ${formData.flight_rules}`, 110, y);
+      y += lineHeight;
+      doc.text(`Tipo de Voo: ${formData.type_of_flight}`, 14, y);
+      
+      y += lineHeight * 2;
+
+      // Section 2: Voo
+      doc.setFont("helvetica", "bold");
+      doc.text("2. DADOS DO VOO", 14, y);
+      y += lineHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Aeródromo de Partida: ${formData.departure_aerodrome}`, 14, y);
+      doc.text(`Hora (EOBT): ${formData.departure_time || "0000"}`, 110, y);
+      y += lineHeight;
+      doc.text(`Velocidade de Cruzeiro: ${formData.cruising_speed}`, 14, y);
+      doc.text(`Nível: ${formData.level}`, 110, y);
+      y += lineHeight;
+      doc.text(`Rota: ${formData.route}`, 14, y);
+      y += lineHeight;
+      doc.text(`Aeródromo de Destino: ${formData.destination_aerodrome}`, 14, y);
+      doc.text(`EET Total: ${formData.total_eet || "0030"}`, 110, y);
+      y += lineHeight;
+      doc.text(`Alt. Aeródromo: ${formData.altn_aerodrome || "NIL"}`, 14, y);
+
+      y += lineHeight * 2;
+
+      // Section 3: Outras Informações
+      doc.setFont("helvetica", "bold");
+      doc.text("3. OUTRAS INFORMAÇÕES (RMK)", 14, y);
+      y += lineHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`${formData.remarks}`, 14, y);
+      y += lineHeight;
+      doc.text(`Autonomia: ${formData.endurance || "0045"}`, 14, y);
+      doc.text(`Pessoas a Bordo: ${formData.persons_on_board}`, 110, y);
+
+      y += lineHeight * 2;
+
+      // Section 4: Piloto em Comando
+      doc.setFont("helvetica", "bold");
+      doc.text("4. PILOTO EM COMANDO", 14, y);
+      y += lineHeight;
+      doc.setFont("helvetica", "normal");
+      doc.text(`Nome: ${pilotName}`, 14, y);
+      
+      // Footer
+      y = 280;
+      doc.setFontSize(8);
+      doc.text("Cópia de Arquivo SYSARP.", 105, y, { align: "center" });
+
+      doc.save(`PlanoVoo_${op.occurrence_number}.pdf`);
+
+    } catch (err) {
+      console.error("PDF regen error", err);
+      alert("Erro ao regenerar PDF.");
     }
   };
 
@@ -349,6 +441,7 @@ export default function Reports() {
     const displayOps = filteredOps.slice(0, 1000);
 
     return displayOps.map(op => {
+      // Check for valid lat/lng before rendering
       if (typeof op.latitude !== 'number' || typeof op.longitude !== 'number') return null;
       
       return (
@@ -516,7 +609,7 @@ export default function Reports() {
                           <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Local / Piloto</th>
                           <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Data</th>
                           <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Status</th>
-                          <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">A.R.O.</th>
+                          <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase">Docs</th>
                        </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -549,19 +642,37 @@ export default function Reports() {
                              <td className="px-4 py-3 text-xs">
                                 <div className="flex items-center gap-2">
                                    {op.aro ? 
-                                      <Badge className="bg-green-100 text-green-700">Confeccionado</Badge> : 
-                                      <Badge className="bg-amber-100 text-amber-700">Pendente</Badge>
+                                      <Badge className="bg-green-100 text-green-700">ARO OK</Badge> : 
+                                      <Badge className="bg-amber-100 text-amber-700">ARO Pend.</Badge>
                                    }
-                                   {op.aro && (
-                                      <Button 
-                                        variant="outline" 
-                                        className="h-6 w-6 p-0 border-slate-200" 
-                                        title="Baixar A.R.O."
-                                        onClick={(e) => handleDownloadAro(op, e)}
-                                      >
-                                         <FileText className="w-3 h-3 text-blue-600" />
-                                      </Button>
-                                   )}
+                                   
+                                   {op.flight_plan_data ? 
+                                      <Badge className="bg-blue-100 text-blue-700">Plan OK</Badge> : 
+                                      <span className="text-[10px] text-slate-400">Sem Plano</span>
+                                   }
+
+                                   <div className="flex gap-1 ml-1">
+                                      {op.aro && (
+                                          <Button 
+                                            variant="outline" 
+                                            className="h-6 w-6 p-0 border-slate-200" 
+                                            title="Baixar A.R.O."
+                                            onClick={(e) => handleDownloadAro(op, e)}
+                                          >
+                                            <FileText className="w-3 h-3 text-green-600" />
+                                          </Button>
+                                      )}
+                                      {op.flight_plan_data && (
+                                          <Button 
+                                            variant="outline" 
+                                            className="h-6 w-6 p-0 border-slate-200" 
+                                            title="Baixar Plano de Voo"
+                                            onClick={(e) => handleDownloadFlightPlan(op, e)}
+                                          >
+                                            <Navigation className="w-3 h-3 text-blue-600" />
+                                          </Button>
+                                      )}
+                                   </div>
                                 </div>
                              </td>
                           </tr>
@@ -585,7 +696,7 @@ export default function Reports() {
                     zoom={7} 
                     style={{ height: '100%', width: '100%' }}
                  >
-                    <MapAdjuster />
+                    <MapController />
                     <TileLayer
                        attribution='&copy; OpenStreetMap'
                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

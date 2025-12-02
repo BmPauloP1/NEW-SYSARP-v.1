@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { operationSummerService } from '../services/operationSummerService';
 import { base44 } from '../services/base44Client';
@@ -14,13 +15,22 @@ export default function OperationSummerAudit() {
 
   useEffect(() => {
     const load = async () => {
-      const [l, p] = await Promise.all([
-        operationSummerService.getAuditLogs(),
-        base44.entities.Pilot.list()
-      ]);
-      setLogs(l);
-      setPilots(p);
-      setLoading(false);
+      try {
+          const [l, p] = await Promise.all([
+            operationSummerService.getAuditLogs(),
+            base44.entities.Pilot.list()
+          ]);
+          setLogs(l);
+          setPilots(p);
+      } catch (e: any) {
+          if (e.message && e.message.includes("Failed to fetch")) {
+             console.warn("Network error loading audit logs");
+          } else {
+             console.error(e);
+          }
+      } finally {
+          setLoading(false);
+      }
     };
     load();
   }, []);
