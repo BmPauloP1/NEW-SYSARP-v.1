@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { operationSummerService } from '../services/operationSummerService';
 import { base44 } from '../services/base44Client';
-import { SummerStats, SUMMER_MISSION_LABELS, SummerFlight, SUMMER_LOCATIONS, SummerMissionType } from '../types_summer';
+import { SummerStats, SUMMER_MISSION_LABELS, SummerFlight, SUMMER_LOCATIONS } from '../types_summer';
 import { Pilot, Drone } from '../types';
 import { Card, Select, Input, Button } from '../components/ui_components';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -35,27 +35,13 @@ const CITY_COORDS: Record<string, [number, number]> = {
 const MapController = () => {
   const map = useMap();
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (map && map.getContainer()) {
-        map.invalidateSize();
-      }
-    }, 200);
-    return () => clearTimeout(timer);
+    setTimeout(() => map.invalidateSize(), 200);
   }, [map]);
   return null;
 };
 
 // Helper to generate jitter for overlapping points
 const jitter = (coord: number) => coord + (Math.random() - 0.5) * 0.02;
-
-interface MapMarker {
-  id: string;
-  lat: number;
-  lng: number;
-  title: string;
-  type: SummerMissionType;
-  info: string;
-}
 
 export default function OperationSummerStats() {
   // Data State
@@ -77,15 +63,24 @@ export default function OperationSummerStats() {
 
   const loadData = async () => {
     setLoading(true);
-    const [f, p, d] = await Promise.all([
-      operationSummerService.list(),
-      base44.entities.Pilot.list(),
-      base44.entities.Drone.list()
-    ]);
-    setAllFlights(f);
-    setPilots(p);
-    setDrones(d);
-    setLoading(false);
+    try {
+        const [f, p, d] = await Promise.all([
+        operationSummerService.list(),
+        base44.entities.Pilot.list(),
+        base44.entities.Drone.list()
+        ]);
+        setAllFlights(f);
+        setPilots(p);
+        setDrones(d);
+    } catch(e: any) {
+        if (e.message && e.message.includes("Failed to fetch")) {
+           console.warn("Failed to fetch summer stats (network error)");
+        } else {
+           console.error(e);
+        }
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleResetFilters = () => {
@@ -149,10 +144,10 @@ export default function OperationSummerStats() {
           title: f.location,
           type: f.mission_type,
           info: `${new Date(f.date).toLocaleDateString()} - ${SUMMER_MISSION_LABELS[f.mission_type]}`
-        } as MapMarker;
+        };
       }
       return null;
-    }).filter((m): m is MapMarker => m !== null);
+    }).filter(Boolean) as any[];
   }, [filteredFlights]);
 
 
@@ -166,7 +161,7 @@ export default function OperationSummerStats() {
 
   // Prepare Chart Data
   const missionData = Object.entries(stats.flights_by_mission).map(([name, value]) => ({ 
-    name: SUMMER_MISSION_LABELS[name as keyof typeof SUMMER_MISSION_LABELS] || name, 
+    name: (SUMMER_MISSION_LABELS[name as keyof typeof SUMMER_MISSION_LABELS] || name) as string, 
     value 
   }));
   
@@ -199,7 +194,7 @@ export default function OperationSummerStats() {
           >
             <option value="all">Todas</option>
             {Object.entries(SUMMER_MISSION_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label as string}</option>
+              <option key={key} value={key}>{label}</option>
             ))}
           </Select>
 

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { operationSummerService } from '../services/operationSummerService';
 import { base44 } from '../services/base44Client';
@@ -34,7 +35,7 @@ export default function OperationSummerFlights() {
         setDrones(d);
         setCurrentUser(me);
     } catch (e: any) {
-        if (e.message !== "Não autenticado") {
+        if (e.message !== "Não autenticado" && !e.message?.includes("Failed to fetch")) {
            console.error("Erro ao carregar dados", e);
         }
     } finally {

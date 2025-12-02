@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo } from "react";
 import { base44 } from "../services/base44Client";
 import { Pilot, ORGANIZATION_CHART } from "../types";
@@ -45,7 +46,7 @@ export default function PilotManagement() {
       setPilots(data);
       setCurrentUser(me);
     } catch (e: any) {
-      if (e.message !== "Não autenticado") {
+      if (e.message !== "Não autenticado" && !e.message?.includes("Failed to fetch")) {
          console.error("Erro ao carregar dados", e);
       }
     } finally {

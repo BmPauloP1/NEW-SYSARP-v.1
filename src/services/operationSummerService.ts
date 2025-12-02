@@ -1,4 +1,5 @@
 
+
 import { supabase, isConfigured } from './supabase';
 import { SummerFlight, SummerStats, SummerAuditLog } from '../types_summer';
 
@@ -154,7 +155,13 @@ export const operationSummerService = {
 
   getAuditLogs: async (): Promise<SummerAuditLog[]> => {
     if (!isConfigured) return getLocal(AUDIT_STORAGE_KEY);
-    const { data } = await supabase.from(AUDIT_TABLE).select('*').order('timestamp', { ascending: false });
-    return data || [];
+    try {
+        const { data, error } = await supabase.from(AUDIT_TABLE).select('*').order('timestamp', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.debug("Failed to fetch audit logs (offline fallback)", e);
+        return getLocal(AUDIT_STORAGE_KEY);
+    }
   }
 };

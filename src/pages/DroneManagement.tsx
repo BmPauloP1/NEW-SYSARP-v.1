@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect } from "react";
 import { base44 } from "../services/base44Client";
 import { Drone, Pilot, DroneChecklist, ChecklistItemState, DRONE_CHECKLIST_TEMPLATE, SYSARP_LOGO, Maintenance } from "../types";
@@ -95,7 +97,7 @@ export default function DroneManagement() {
       setCatalog(cat);
       setCurrentUser(me);
     } catch (e: any) {
-      if (e.message !== "Não autenticado") {
+      if (e.message !== "Não autenticado" && !e.message?.includes("Failed to fetch")) {
          console.error("Erro ao carregar dados", e);
       }
     }
