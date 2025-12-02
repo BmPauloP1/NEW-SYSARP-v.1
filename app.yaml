@@ -1,0 +1,17 @@
+runtime: python39
+service: default
+
+handlers:
+  # 1. Serve arquivos estáticos da pasta assets (padrão do Vite)
+  - url: /assets
+    static_dir: dist/assets
+
+  # 2. Serve arquivos específicos na raiz (favicons, imagens, manifestos, etc.)
+  - url: /(.*\.(json|ico|js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|txt))$
+    static_files: dist/\1
+    upload: dist/.*
+
+  # 3. Catch-all: Redireciona qualquer outra URL para o index.html (SPA Routing)
+  - url: /.*
+    static_files: dist/index.html
+    upload: dist/index.html

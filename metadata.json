@@ -1,0 +1,7 @@
+{
+  "name": "Copy of NEWSYSARP",
+  "description": "Sistema de gestão de operações com drones para o Corpo de Bombeiros, incluindo monitoramento em tempo real, gestão de frota e pilotos.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
