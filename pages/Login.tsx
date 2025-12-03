@@ -1,11 +1,9 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '../services/base44Client';
 import { Card, Button, Input, Select } from '../components/ui_components';
 import { Lock, UserPlus, Shield, AlertTriangle, LogIn, Mail, KeyRound, CheckSquare, X, FileText, UserCog, Database, Copy, CheckCircle } from 'lucide-react';
-import { SYSARP_LOGO, ORGANIZATION_CHART, LGPD_TERMS } from '../types';
+import { ORGANIZATION_CHART, LGPD_TERMS } from '../types';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -42,9 +40,6 @@ export default function Login() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [changePasswordTermsAccepted, setChangePasswordTermsAccepted] = useState(false);
-
-  // Logo Error State
-  const [imgError, setImgError] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,19 +282,13 @@ NOTIFY pgrst, 'reload schema';
       {/* Main Content */}
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-           <div className="w-28 h-28 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg p-2 border-2 border-white/20">
-              {!imgError ? (
-                <img 
-                  src={SYSARP_LOGO} 
-                  className="w-full h-full object-contain" 
-                  alt="SYSARP Logo"
-                  onError={() => {
-                    setImgError(true);
-                  }}
-                />
-              ) : (
-                <Shield className="w-16 h-16 text-white" />
-              )}
+           {/* Logo Container */}
+           <div className="w-32 h-32 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg p-3 border-2 border-white/20">
+              <img 
+                src="/img/logosoarp.png" 
+                className="w-full h-full object-contain" 
+                alt="SYSARP Logo"
+              />
            </div>
            <h1 className="text-4xl font-extrabold text-white tracking-widest uppercase" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.3)' }}>SYSARP</h1>
            <p className="text-red-200 text-xs font-medium uppercase tracking-wider">Sistema de Aeronaves Remotamente Pilotadas</p>

@@ -1,11 +1,8 @@
-
-
-
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { base44 } from "../services/base44Client";
 import { supabase, isConfigured } from "../services/supabase"; 
-import { Pilot, ConflictNotification, SYSARP_LOGO, LGPD_TERMS } from "../types";
+import { Pilot, ConflictNotification, LGPD_TERMS } from "../types";
 import { DroneIcon, Button, Card } from "./ui_components";
 import {
   LayoutDashboard, Users, Radio, FileText, Wrench,
@@ -140,9 +137,6 @@ export default function Layout({ children }: LayoutProps) {
   
   // Notification State
   const [notifications, setNotifications] = useState<ConflictNotification[]>([]);
-
-  // Image error handling
-  const [imgError, setImgError] = useState(false);
 
   // LGPD Modal
   const [showLgpdModal, setShowLgpdModal] = useState(false);
@@ -321,17 +315,13 @@ export default function Layout({ children }: LayoutProps) {
       {/* Mobile Header - Z-index adjusted to be BELOW the sidebar when open */}
       <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-gradient-to-r from-sysarp-dark to-sysarp-primary z-30 flex items-center justify-between px-4 shadow-md">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-white p-0.5 overflow-hidden flex items-center justify-center">
-             {!imgError ? (
-               <img 
-                 src={SYSARP_LOGO} 
-                 alt="Logo" 
-                 className="w-full h-full object-contain" 
-                 onError={() => setImgError(true)} 
-               />
-             ) : (
-               <Shield className="w-6 h-6 text-red-700" />
-             )}
+          {/* Mobile Header Logo Container - Adjusted to be rounded-lg for better fit */}
+          <div className="w-10 h-10 rounded-lg bg-white p-0.5 overflow-hidden flex items-center justify-center">
+             <img 
+               src="/img/logosoarp.png" 
+               alt="Logo" 
+               className="w-full h-full object-contain" 
+             />
           </div>
           <span className="text-white font-bold tracking-wider">SYSARP</span>
         </div>
@@ -356,17 +346,13 @@ export default function Layout({ children }: LayoutProps) {
       `}>
         {/* Header */}
         <div className="h-20 flex items-center gap-3 px-4 border-b border-red-700/50 bg-black/10 flex-shrink-0">
-          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg p-1 overflow-hidden flex-shrink-0">
-             {!imgError ? (
-               <img 
-                 src={SYSARP_LOGO} 
-                 alt="Logo" 
-                 className="w-full h-full object-contain" 
-                 onError={() => setImgError(true)} 
-               />
-             ) : (
-               <Shield className="w-8 h-8 text-red-700" />
-             )}
+          {/* Sidebar Logo Container */}
+          <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg p-1 overflow-hidden flex-shrink-0">
+             <img 
+               src="/img/logosoarp.png" 
+               alt="Logo" 
+               className="w-full h-full object-contain" 
+             />
           </div>
           <div className="min-w-0">
             <h1 className="font-extrabold text-white text-lg tracking-wider leading-none">SYSARP</h1>
