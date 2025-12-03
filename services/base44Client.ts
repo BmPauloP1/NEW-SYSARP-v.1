@@ -140,14 +140,20 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
 
   return {
     list: async (orderBy?: string): Promise<T[]> => {
-      // 1. Se não estiver configurado (Offline Mode Real), usa LocalStorage direto com Seed
-      if (!isConfigured) {
+      // 1. Verificação Rápida de Conexão
+      if (!isConfigured || !navigator.onLine) {
         if (entityName === 'Drone') seedDronesIfEmpty();
         if (entityName === 'Pilot') seedPilotsIfEmpty();
         return getLocal<T>(storageKey);
       }
 
-      // 2. Tenta buscar no Supabase
+      // 2. Lógica de Timeout Adaptativo
+      // Se temos cache, damos pouco tempo para a rede (2s) para a UI parecer rápida.
+      // Se NÃO temos cache, damos mais tempo (10s) para garantir que baixe.
+      const cachedData = getLocal<T>(storageKey);
+      const hasCache = cachedData.length > 0;
+      const adaptiveTimeout = hasCache ? 2000 : 10000;
+
       try {
         let query = supabase.from(tableName).select('*');
         if (orderBy) {
@@ -158,30 +164,25 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
           query = query.order('created_at', { ascending: false });
         }
 
-        // Timeout Promise para evitar travamento longo
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Timeout")), 8000)
+            setTimeout(() => reject(new Error("Timeout")), adaptiveTimeout)
         );
 
         const { data, error } = await Promise.race([query, timeoutPromise]) as any;
         
         if (error) throw error;
         
-        // SUCESSO: Atualiza o Cache Local (Isso evita dados sumindo na próxima falha)
+        // SUCESSO: Atualiza o Cache Local
         setLocal(storageKey, data);
         
         return data as unknown as T[];
       } catch (e: any) {
         // FALHA: Fallback silencioso para o cache local
-        if (e.message && (e.message.includes("Failed to fetch") || e.message === "Timeout")) {
-           console.debug(`Offline/Network/Timeout listing ${entityName} (using fallback cache)`);
-        } else {
-           console.warn(`Supabase list error for ${entityName}:`, e);
+        if (hasCache) {
+           console.debug(`[Speed Optimization] Usando cache local para ${entityName} devido à lentidão da rede.`);
+           return cachedData;
         }
-        
-        // Retorna o que tem no cache (que foi atualizado no último sucesso)
-        const cachedData = getLocal<T>(storageKey);
-        
+
         // Se cache vazio e for entidade crítica, tenta seedar para não quebrar UI
         if (cachedData.length === 0) {
            if (entityName === 'Drone') return seedDronesIfEmpty() as any;
@@ -193,7 +194,6 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
     },
 
     filter: async (predicate: Partial<T> | ((item: T) => boolean)): Promise<T[]> => {
-      // Fallback function helper
       const applyLocalFilter = () => {
         const items = getLocal<T>(storageKey);
         if (typeof predicate === 'function') {
@@ -203,10 +203,15 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
         }
       };
 
-      if (!isConfigured) {
+      if (!isConfigured || !navigator.onLine) {
          if (entityName === 'Pilot') seedPilotsIfEmpty();
          return applyLocalFilter();
       }
+
+      // Adaptive Timeout também para filtros
+      const cachedData = getLocal<T>(storageKey);
+      const hasCache = cachedData.length > 0;
+      const adaptiveTimeout = hasCache ? 2000 : 8000;
 
       try {
         if (typeof predicate === 'object') {
@@ -215,25 +220,22 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
             query = query.eq(key, value as any);
           });
           
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), adaptiveTimeout));
           const { data, error } = await Promise.race([query, timeoutPromise]) as any;
           
           if (error) throw error;
           
-          // Nota: Não atualizamos o cache full aqui pois é um subset, 
-          // mas confiamos no 'list' para manter o cache full atualizado.
           return data as unknown as T[];
         }
         
-        // Se o predicado for função, precisamos buscar tudo e filtrar (pesado, prefira list + filter local na UI se possível)
+        // Se o predicado for função, precisamos buscar tudo
         const { data, error } = await supabase.from(tableName).select('*');
         if (error) throw error;
         
-        setLocal(storageKey, data); // Cache update opportunity
+        setLocal(storageKey, data); 
         return (data as unknown as T[]).filter(predicate);
 
       } catch (e: any) {
-        // Fallback
         return applyLocalFilter();
       }
     },
@@ -242,10 +244,9 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
       const cleanItem = JSON.parse(JSON.stringify(item));
       if ('password' in cleanItem) delete cleanItem.password;
       
-      // Função auxiliar para atualizar cache local na criação
       const updateLocalCache = (newItem: T) => {
          const items = getLocal<T>(storageKey);
-         items.unshift(newItem); // Adiciona no topo
+         items.unshift(newItem);
          setLocal(storageKey, items);
       };
 
@@ -256,33 +257,27 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
       }
 
       try {
+        // Create usually needs longer timeout as it's critical
         const { data, error } = await supabase
           .from(tableName)
           .insert([cleanItem])
           .select()
           .single();
         
-        if (error) {
-           throw error; 
-        }
+        if (error) throw error;
         
-        // Atualiza cache local imediatamente após sucesso na nuvem
         updateLocalCache(data as T);
-        
         return data as T;
 
       } catch (e: any) {
         const msg = e.message || '';
-        
         if (msg.includes("Failed to fetch")) {
           throw new Error("Erro de Conexão: Verifique sua internet. O dado não foi salvo na nuvem.");
         }
-        
         const missingCol = msg.match(/Could not find the '(.+?)' column/)?.[1];
         if (missingCol) {
            throw new Error(`Banco de Dados desatualizado: Falta a coluna '${missingCol}' na tabela '${tableName}'.`);
         }
-
         throw new Error(`Erro ao salvar: ${msg}`);
       }
     },
@@ -292,7 +287,7 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
          const items = getLocal<T>(storageKey);
          const index = items.findIndex(i => i.id === id);
          if (index !== -1) {
-            items[index] = { ...items[index], ...updatedItem }; // Merge
+            items[index] = { ...items[index], ...updatedItem };
             setLocal(storageKey, items);
          }
       };
@@ -320,7 +315,6 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
         
         updateLocalCache(data as T);
         return data as T;
-
       } catch (e: any) {
         throw new Error(`Erro ao atualizar: ${e.message}`);
       }
@@ -352,10 +346,8 @@ const createEntityHandler = <T extends { id: string }>(entityName: keyof typeof 
 // Auth Handler
 const authHandler = {
   me: async (): Promise<Pilot> => {
-    // Check if using the backdoor admin session
     const isAdminSession = localStorage.getItem('sysarp_admin_session');
     
-    // IF ONLINE, backdoor is disabled to force real auth
     if (!isConfigured) {
        if (isAdminSession === 'true') return MOCK_ADMIN;
        const localSession = localStorage.getItem('sysarp_user_session');
@@ -366,7 +358,14 @@ const authHandler = {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // Short timeout for auth check to prevent hanging on load
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
+      
+      const { data: { user } } = await Promise.race([
+          supabase.auth.getUser(), 
+          timeoutPromise
+      ]) as any;
+
       if (!user) {
         throw new Error("Não autenticado");
       }
@@ -378,7 +377,7 @@ const authHandler = {
         .single();
 
       if (error || !profile) {
-         // Auto-healing (mesma lógica anterior)
+         // Auto-healing logic
          try {
            const { data: newProfile } = await supabase
               .from('profiles')
@@ -413,7 +412,6 @@ const authHandler = {
     
     if (!password) throw new Error("Senha obrigatória");
 
-    // Offline Backdoor
     if (!isConfigured) {
       if(adminEmails.includes(email.toLowerCase()) && password === 'admin123') {
         localStorage.setItem('sysarp_admin_session', 'true');
@@ -442,19 +440,6 @@ const authHandler = {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
 
       if (!profile) {
-         // Self-healing attempt
-         try {
-           const { data: newProfile } = await supabase.from('profiles').insert([{
-               id: data.user.id,
-               email: data.user.email,
-               full_name: data.user.user_metadata.full_name || 'Usuário',
-               role: 'operator',
-               status: 'active',
-               terms_accepted: true
-           }]).select().single();
-           if (newProfile) return newProfile as Pilot;
-         } catch(profileErr) {}
-         
          const tempProfile = { 
              id: data.user.id, 
              email: data.user.email!, 
@@ -462,13 +447,10 @@ const authHandler = {
              role: 'operator', 
              status: 'active' 
          } as Pilot;
-         
-         // Salva sessão local para garantir acesso se a rede cair logo depois
          localStorage.setItem('sysarp_user_session', JSON.stringify(tempProfile));
          return tempProfile;
       }
 
-      // Salva sessão local de sucesso
       localStorage.setItem('sysarp_user_session', JSON.stringify(profile));
       return profile as Pilot;
     } catch (e: any) {
@@ -478,7 +460,6 @@ const authHandler = {
   },
 
   createAccount: async (pilotData: Partial<Pilot> & { password?: string, email_confirm?: boolean }): Promise<Pilot> => {
-     // Mantido lógica anterior de criação
      if (!pilotData.email || !pilotData.password) throw new Error("Email e senha obrigatórios");
     
      if (!isConfigured) {
@@ -516,7 +497,6 @@ const authHandler = {
        if (error) throw error;
        if (!data.user) throw new Error("Erro ao criar usuário no Auth.");
  
-       // Tenta criar perfil manualmente
        try {
          const profilePayload = {
              id: data.user.id,
@@ -544,15 +524,11 @@ const authHandler = {
        if (msg.includes("Failed to fetch")) {
          throw new Error("Não foi possível conectar ao servidor Supabase.");
        }
-       if (msg.includes("Database error")) {
-         throw new Error("SQL FIX REQUIRED: Erro de banco de dados (Gatilhos).");
-       }
        throw new Error(msg || "Erro no cadastro.");
      }
   },
 
   changePassword: async (userId: string, newPassword: string): Promise<void> => {
-     // Lógica mantida...
      if (userId === MOCK_ADMIN.id) return;
      const termsAcceptedAt = new Date().toISOString();
  
@@ -596,9 +572,7 @@ const authHandler = {
        localStorage.setItem('droneops_catalog', JSON.stringify(newCatalog));
     },
     diagnose: async () => {
-      // Diagnóstico mantido, apenas adicionando verificação de cache
       const results = [];
-      
       const pilotsCache = getLocal<Pilot>('sysarp_pilots');
       results.push({ 
           check: 'Cache Local', 
@@ -611,7 +585,6 @@ const authHandler = {
           return results;
       }
 
-      // Teste Conexão Real
       try {
         const { error } = await supabase.from('profiles').select('count').limit(1).single();
         if (error) throw error;
