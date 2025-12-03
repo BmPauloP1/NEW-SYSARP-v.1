@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+
+import React, { useEffect, useState, useCallback, memo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { base44 } from "../services/base44Client";
 import { Operation, Drone, Pilot, Maintenance, MISSION_HIERARCHY, ConflictNotification } from "../types";
-import { Card, Badge, Button } from "../components/ui_components";
-import { Radio, Video, AlertTriangle, Map as MapIcon, Wrench, Clock, ExternalLink, Activity, List, Shield, Crosshair, Phone, Check } from "lucide-react";
+import { Badge, Button } from "../components/ui_components";
+import { Radio, Video, AlertTriangle, Map as MapIcon, Wrench, List, Shield, Crosshair, Phone, Check } from "lucide-react";
 
 // Fix Leaflet icons
 const icon = L.icon({
@@ -17,45 +18,48 @@ const icon = L.icon({
   shadowSize: [41, 41]
 });
 
-// Componente para controlar o mapa (Redimensionamento e Geolocalização)
-const MapController = () => {
+// Componente para controlar o mapa (Otimizado)
+const MapController = memo(() => {
   const map = useMap();
   const [positionFound, setPositionFound] = useState(false);
 
   useEffect(() => {
-    // 1. Correção de Renderização (Bug do Leaflet em Flexbox)
-    // Força o mapa a atualizar seu tamanho após o DOM ser pintado
+    // 1. Correção de Renderização (Bug do Leaflet em Flexbox) - Request Animation Frame é mais suave que Timeout
+    let frameId: number;
+    const resizeMap = () => {
+       if (map) map.invalidateSize();
+    };
+    
+    // Pequeno delay inicial para garantir montagem do DOM
     const timer = setTimeout(() => {
-      if (map && map.getContainer()) {
-        map.invalidateSize();
-      }
-    }, 200);
+       frameId = requestAnimationFrame(resizeMap);
+    }, 100);
 
-    // 2. Geolocalização do Dispositivo
+    // 2. Geolocalização do Dispositivo (Apenas uma vez)
     if (!positionFound && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          // Safeguard: Check if map instance and container still exist before calling methods
           if (!map || !map.getContainer()) return;
-          
           const { latitude, longitude } = position.coords;
-          // Usa setView em vez de flyTo para evitar animações complexas que podem causar erro _leaflet_pos se o mapa desmontar
           map.setView([latitude, longitude], 10);
           setPositionFound(true);
         },
         (error) => {
-          if (!map || !map.getContainer()) return;
-          console.warn("Geolocalização bloqueada ou indisponível:", error.message);
-          map.setZoom(7);
-        }
+          console.warn("Geolocalização bloqueada:", error.message);
+          map.setZoom(7); // Fallback zoom
+        },
+        { timeout: 10000, maximumAge: 60000 } // Cache da posição por 1 min
       );
     }
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(frameId);
+    };
   }, [map, positionFound]);
 
   return null;
-};
+});
 
 export default function Dashboard() {
   const [activeOps, setActiveOps] = useState<Operation[]>([]);
@@ -66,33 +70,23 @@ export default function Dashboard() {
   const [drones, setDrones] = useState<Drone[]>([]);
   const [currentUser, setCurrentUser] = useState<Pilot | null>(null);
   
-  useEffect(() => {
-    const init = async () => {
-        try {
-            const user = await base44.auth.me();
-            setCurrentUser(user);
-            loadData(user);
-        } catch (e) {
-            console.debug("Dashboard auth/load failed (likely redirecting)", e);
-        }
-    };
-    init();
+  // Ref para controle de montagem e evitar updates em componente desmontado
+  const isMounted = React.useRef(true);
 
-    const interval = setInterval(() => {
-        if (currentUser) loadData(currentUser);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [currentUser]); // Added currentUser dependency to ensure interval uses correct user
-
-  const loadData = async (user?: Pilot) => {
+  const loadData = useCallback(async (user?: Pilot) => {
     try {
+      // Paraleliza as requisições para performance
       const [ops, maints, drn] = await Promise.all([
         base44.entities.Operation.list('-start_time'),
         base44.entities.Maintenance.filter(m => m.status !== 'completed'),
         base44.entities.Drone.list()
       ]);
 
+      if (!isMounted.current) return;
+
       const active = ops.filter(o => o.status === 'active');
+      
+      // Batch updates to reduce renders
       setActiveOps(active);
       setRecentOps(ops.slice(0, 5));
       setMaintenanceAlerts(maints);
@@ -102,17 +96,43 @@ export default function Dashboard() {
       // Load Conflict Notifications for current user
       if (user) {
           const conflicts = await base44.entities.ConflictNotification.filter({ target_pilot_id: user.id, acknowledged: false });
-          setConflictAlerts(conflicts);
+          if(isMounted.current) setConflictAlerts(conflicts);
       }
     } catch (e: any) {
-      // Suppress "Failed to fetch" console noise if polling while offline/unstable
+      // Suppress "Failed to fetch" console noise
       if (e.message && e.message.includes("Failed to fetch")) {
-         console.warn("Dashboard polling failed (network issue)");
+         // Silent fail
       } else {
-         console.error("Dashboard data load error", e);
+         console.warn("Dashboard partial load error:", e.message);
       }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    isMounted.current = true;
+    
+    const init = async () => {
+        try {
+            const user = await base44.auth.me();
+            if(isMounted.current) {
+                setCurrentUser(user);
+                loadData(user);
+            }
+        } catch (e) {
+            console.debug("Dashboard init auth check", e);
+        }
+    };
+    init();
+
+    const interval = setInterval(() => {
+        if (currentUser && isMounted.current) loadData(currentUser);
+    }, 30000);
+    
+    return () => {
+        isMounted.current = false;
+        clearInterval(interval);
+    };
+  }, [currentUser, loadData]);
 
   const handleAckConflict = async (id: string) => {
      try {
@@ -153,26 +173,26 @@ export default function Dashboard() {
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
-        {/* LEFT/TOP: MAP (Flexible width/height) */}
-        {/* On Mobile: Height fixed to 50vh. On Desktop: flex-1 */}
+        {/* LEFT/TOP: MAP */}
         <div className="w-full lg:flex-1 h-[50vh] lg:h-auto relative border-r border-slate-200 shadow-inner z-0">
            <MapContainer 
-              center={[-25.2521, -52.0215]} // Paraná Center (Default Fallback)
+              center={[-25.2521, -52.0215]} 
               zoom={7} 
               style={{ height: '100%', width: '100%' }}
             >
-              <MapController /> {/* Componente de Controle Adicionado */}
+              <MapController />
               
               <TileLayer
                 attribution='&copy; OpenStreetMap'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               {activeOps.map(op => {
-                // Ensure coordinates are valid numbers before rendering marker to avoid Leaflet errors
-                if (typeof op.latitude === 'number' && typeof op.longitude === 'number' && !isNaN(op.latitude) && !isNaN(op.longitude)) {
-                  return (
+                // Safety check for valid coordinates
+                if (typeof op.latitude !== 'number' || typeof op.longitude !== 'number' || isNaN(op.latitude)) return null;
+
+                return (
                     <Marker 
-                      key={op.id} // Stable ID key prevents remounting on position update
+                      key={op.id} 
                       position={[op.latitude, op.longitude]} 
                       icon={icon}
                     >
@@ -181,11 +201,6 @@ export default function Dashboard() {
                           <strong className="text-sm block">{op.name}</strong>
                           <span className="text-xs text-slate-500 block mb-1">#{op.occurrence_number}</span>
                           <Badge variant="danger">{MISSION_HIERARCHY[op.mission_type]?.label || op.mission_type}</Badge>
-                          {op.sub_mission_type && (
-                             <div className="mt-1 text-xs text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
-                               {op.sub_mission_type}
-                             </div>
-                          )}
                           {op.stream_url && (
                             <div className="mt-2 text-xs text-blue-600 font-bold flex items-center gap-1">
                               <Video className="w-3 h-3" /> Transmissão Disponível
@@ -195,27 +210,19 @@ export default function Dashboard() {
                       </Popup>
                     </Marker>
                   );
-                }
-                return null;
               })}
            </MapContainer>
            
-           {/* Floating Legend */}
            <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur p-3 rounded-lg shadow-lg border border-slate-200 text-xs z-[400]">
               <div className="font-bold text-slate-700 mb-2">Legenda</div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 bg-blue-500 rounded-full border border-white shadow-sm"></div>
                 <span>Marcador Padrão (Ativo)</span>
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-2 border-t pt-1">
-                 <Crosshair className="w-3 h-3" />
-                 <span>Centralizado via GPS</span>
-              </div>
            </div>
         </div>
 
-        {/* RIGHT/BOTTOM: ALERTS SIDEBAR (Fixed width desktop / Full width mobile) */}
-        {/* On Mobile: Height 50vh. On Desktop: width 96 */}
+        {/* RIGHT/BOTTOM: ALERTS SIDEBAR */}
         <div className="w-full lg:w-96 h-[50vh] lg:h-auto bg-slate-100 flex flex-col overflow-hidden border-t lg:border-t-0 lg:border-l border-slate-200 z-10 flex-shrink-0 shadow-[0_-5px_15px_-5px_rgba(0,0,0,0.1)] lg:shadow-none">
           <div className="p-4 bg-white border-b border-slate-200 font-bold text-slate-800 flex items-center gap-2 shadow-sm flex-shrink-0">
             <Shield className="w-5 h-5 text-red-700" />
@@ -330,59 +337,25 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-
-            {/* BOX 4: CONFLICT ALERTS */}
-            <div className="bg-white rounded-xl shadow-sm border border-red-500 overflow-hidden flex-shrink-0 animate-fade-in">
-              <div className="bg-gradient-to-r from-red-600 to-red-500 px-4 py-2 flex justify-between items-center">
-                <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
-                  <AlertTriangle className="w-3 h-3 text-yellow-300" />
-                  Alertas de Tráfego
-                </h3>
-                {conflictAlerts.length > 0 && (
-                   <span className="bg-white text-red-600 text-[10px] font-bold px-1.5 rounded-full animate-pulse">
-                     {conflictAlerts.length}
-                   </span>
-                )}
+            
+            {/* Conflict Alerts */}
+            {conflictAlerts.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-red-500 overflow-hidden flex-shrink-0 animate-pulse">
+                <div className="bg-red-600 px-4 py-2 flex justify-between items-center">
+                  <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" /> Tráfego Convergente
+                  </h3>
+                </div>
+                <div className="p-3">
+                   {conflictAlerts.map(alert => (
+                     <div key={alert.id} className="text-xs text-red-800 bg-red-50 p-2 rounded mb-1">
+                        <strong>{alert.new_op_name}</strong> - Detectado próximo à sua posição.
+                        <Button size="sm" className="w-full mt-2 h-6 text-[10px]" onClick={() => handleAckConflict(alert.id)}>Ciente</Button>
+                     </div>
+                   ))}
+                </div>
               </div>
-              
-              <div className="p-3 space-y-2">
-                {conflictAlerts.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic text-center py-2">Nenhum conflito reportado.</p>
-                ) : (
-                  conflictAlerts.map(alert => (
-                    <div key={alert.id} className="p-3 bg-red-50 border-l-4 border-l-red-600 rounded-r-lg shadow-sm">
-                      <div className="mb-2">
-                         <p className="text-xs font-bold text-red-800 uppercase mb-0.5">Tráfego Convergente Detectado</p>
-                         <p className="text-[11px] text-slate-700 font-semibold">Nova Op: {alert.new_op_name}</p>
-                         <p className="text-[11px] text-slate-600">Piloto: {alert.new_pilot_name}</p>
-                         <p className="text-[10px] text-slate-500 mt-0.5">
-                            Alt: {alert.new_op_altitude}m | Raio: {alert.new_op_radius}m
-                         </p>
-                      </div>
-                      
-                      <div className="flex gap-2 mt-2">
-                         {alert.new_pilot_phone && (
-                             <Button 
-                                size="sm" 
-                                className="flex-1 h-7 text-[10px] bg-green-600 hover:bg-green-700 text-white border-none"
-                                onClick={() => openWhatsApp(alert.new_pilot_phone!)}
-                             >
-                                <Phone className="w-3 h-3 mr-1" /> WhatsApp
-                             </Button>
-                         )}
-                         <Button 
-                            size="sm" 
-                            className="flex-1 h-7 text-[10px] bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
-                            onClick={() => handleAckConflict(alert.id)}
-                         >
-                            <Check className="w-3 h-3 mr-1" /> Ciente
-                         </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            )}
 
           </div>
         </div>
