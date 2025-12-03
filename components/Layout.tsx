@@ -1,4 +1,6 @@
 
+
+
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { base44 } from "../services/base44Client";
@@ -326,7 +328,6 @@ export default function Layout({ children }: LayoutProps) {
                  alt="Logo" 
                  className="w-full h-full object-contain" 
                  onError={() => setImgError(true)} 
-                 referrerPolicy="no-referrer"
                />
              ) : (
                <Shield className="w-6 h-6 text-red-700" />
@@ -362,7 +363,6 @@ export default function Layout({ children }: LayoutProps) {
                  alt="Logo" 
                  className="w-full h-full object-contain" 
                  onError={() => setImgError(true)} 
-                 referrerPolicy="no-referrer"
                />
              ) : (
                <Shield className="w-8 h-8 text-red-700" />

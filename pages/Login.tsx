@@ -292,9 +292,10 @@ NOTIFY pgrst, 'reload schema';
                 <img 
                   src={SYSARP_LOGO} 
                   className="w-full h-full object-contain" 
-                  alt="Logo"
-                  onError={() => setImgError(true)}
-                  referrerPolicy="no-referrer"
+                  alt="SYSARP Logo"
+                  onError={() => {
+                    setImgError(true);
+                  }}
                 />
               ) : (
                 <Shield className="w-16 h-16 text-white" />

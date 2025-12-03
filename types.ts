@@ -8,8 +8,8 @@ export type DroneStatus = 'available' | 'in_operation' | 'maintenance';
 export type MaintenanceType = 'preventive' | 'corrective' | 'inspection' | 'calibration' | 'battery' | 'propeller' | 'camera' | 'general';
 export type MaintenanceStatus = 'scheduled' | 'in_progress' | 'completed';
 
-// Logo Oficial do CBMPR (URL Pública Estável - Wikimedia Commons)
-export const SYSARP_LOGO = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Bras%C3%A3o_do_Corpo_de_Bombeiros_Militar_do_Paran%C3%A1.svg/240px-Bras%C3%A3o_do_Corpo_de_Bombeiros_Militar_do_Paran%C3%A1.svg.png";
+// Logo Oficial do CBMPR (Local - pasta img)
+export const SYSARP_LOGO = "/img/logosoarp.png";
 
 export interface Pilot {
   id: string;
